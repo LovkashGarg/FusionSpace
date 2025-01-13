@@ -2,22 +2,24 @@
 const mongoose=require('mongoose');
 
 const fileSchema = new mongoose.Schema({
-    name: {
+
+    filename: {
         type: String,
-        required: true,
     },
     content: {
         type: String, // Use String for storing text content. For binary files, use Buffer.
-        required: true,
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now,
     },
 });
 
 const RoomSchema=new mongoose.Schema({
-    RoomId: { type: String, required: true },
+    RoomId: { type: String, },
     Files: [fileSchema]
 })
 
 
 const Room = mongoose.model('Room', RoomSchema);
-
 module.exports = Room;

@@ -1,34 +1,38 @@
-import React, { useEffect, useState, useContext, useRef } from "react";
+import React, { useEffect, useState, useContext } from "react";
 import { SocketContext } from "../context/socket";
 import { IoArrowUndo } from "react-icons/io5";
 import { IoIosRedo, IoMdCopy } from "react-icons/io";
 import { ImCross } from "react-icons/im";
 import { IoIosChatboxes } from "react-icons/io";
-import Chatbox from "./chatbox";
+
+// import Chatbox from "./chatbox";
+
 import axios from "axios";
 import { FaTasks } from "react-icons/fa";
 import {
-  useLocation,
+  // useLocation,
   useNavigate,
   useParams,
-  useSearchParams,
+  // useSearchParams,
 } from "react-router-dom";
 import FullScreenResponse from "./Response";
 const Room = () => {
   const socket = useContext(SocketContext);
   const navigate = useNavigate();
   const { roomId } = useParams();
-  
+
   const [undoStack, setUndoStack] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
   const [fileContent, setFileContent] = useState("");
   const [currentFile, setCurrentFile] = useState("");
   const [openedFile, setOpenedFile] = useState([]);
-  const [allFiles, setAllFiles] = useState([]);
 
+  const [allFiles, setAllFiles] = useState([]);
   const [collaborators, setCollaborators] = useState([]);
-  const [cursors, setCursors] = useState({});
-  const cursorRef = useRef(null);
+
+  // const [cursors, setCursors] = useState({});
+  // const cursorRef = useRef(null);
+
   const [copied, setCopied] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [answer, setAnswer] = useState("");
@@ -54,13 +58,12 @@ const Room = () => {
       setCollaborators((prev) => prev.filter((id) => id !== userId));
     });
 
-     // Listen for content updates from other users
-     socket.on("updateContent", (newContent) => {
+    // Listen for content updates from other users
+    socket.on("updateContent", (newContent) => {
       setFileContent(newContent);
     });
 
     // Listen for all files update from server
-  
 
     // Clean up event listeners on component unmount
     return () => {
@@ -71,43 +74,60 @@ const Room = () => {
     };
   }, [socket]);
 
-  // Listen for other users' cursor updates
   useEffect(() => {
-    socket.on("cursor-update", (data) => {
-      setCursors((prevCursors) => ({
-        ...prevCursors,
-        [data.userId]: { x: data.clientX, y: data.clientY },
-      }));
+    // Listen for the 'filechange' event emitted by the server
+    socket.on("filechange", ({ filename, content }) => {
+      // Check if the changed file is the current file being viewed
+      if (filename === currentFile) {
+        // Update the file content for the current file
+        setFileContent(content);
+      }
+
+      // Optionally, you can update the opened files list or perform other UI updates
+      setOpenedFile((prevFiles) => {
+        const fileIndex = prevFiles.findIndex((file) => file === filename);
+        if (fileIndex === -1) {
+          return [...prevFiles, filename];
+        }
+        return prevFiles;
+      });
     });
 
+    // Cleanup on component unmount
     return () => {
-      socket.off("cursor-update");
+      socket.off("filechange");
     };
-  }, []);
+  }, [currentFile]);
 
   //   const location=useLocation();
   const [roomID, setRoomId] = useState("");
+  const fetchFiles = async (roomID) => {
+    try {
+      const response = await axios.get(
+        `http://localhost:5000/allFilesdata/${roomID}`
+      );
+      if (response.data.success) {
+        setAllFiles(response.data.files);
+        setOpenedFile(response.data.files.map((file) => file.filename));
+
+        console.log("Files:", response.data.files);
+        return response.data.files;
+      } else {
+        console.error("No files found:", response.data.message);
+      }
+    } catch (error) {
+      console.error("Error fetching files:", error.message);
+    }
+  };
+
   useEffect(() => {
     setRoomId(roomId);
+    fetchFiles(roomID);
   }, [roomID]);
- 
 
-  useEffect(()=>{
-
-    // const data=axios.get(`http://localhost:5000/allFilesdata/${roomId}`);
-    // setAllFiles(data);
-    
-    // socket.on("AllFiles", (allfiles) => {
-    //   // console.log("there comes the file " + allfiles);
-    //   setAllFiles(allfiles);
-    //   setOpenedFile(Object.keys(allfiles)); // Update opened files list
-    //   console.log("Hello I am listened or not "+ JSON.stringify(allfiles));
-    // });
-    // return () => {
-    //   socket.off("AllFiles");
-    // };
-  })
-
+  useEffect(() => {
+    fetchFiles(roomID);
+  }, [allFiles]);
 
   const openChatbox = () => {
     setchatboxdisplay(!chatboxdisplay);
@@ -127,22 +147,36 @@ const Room = () => {
       reader.onload = (e) => {
         const content = e.target.result;
 
-        // Add the file to opened files list and set current file content
+        // Update the opened files list, current file, and its content
         setOpenedFile((prev) => [...prev, file.name]);
         setCurrentFile(file.name);
-        setFileContent(content); // Set content after reading
+        setFileContent(content);
 
-        // Emit `filechange` event to server with filename and content
+        // Emit the file content with filename and room ID to the server
         socket.emit("filechange", {
-          filename: file.name,
-          content,
-          RoomID: roomId,
+          RoomID: roomID, // Room ID
+          filename: file.name, // File name
+          content, // File content
         });
-        
       };
       reader.readAsText(file);
     }
   };
+
+  const handleChange = (e) => {
+    const newContent = e.target.value;
+    // Update the content in the current page
+    setUndoStack((prevStack) => [...prevStack, fileContent]); // Save current content to the undo stack
+    setFileContent(newContent); // Update the displayed content
+
+    // Emit the new content with file name and room ID to the server
+    socket.emit("sendContent", {
+      roomId, // Room ID
+      filename: currentFile, // File name of the active file
+      newContent: newContent, // Updated file content
+    });
+  };
+
   const handleUndo = () => {
     if (undoStack.length > 0) {
       const lastContent = undoStack[undoStack.length - 1];
@@ -158,18 +192,10 @@ const Room = () => {
     }
   };
 
-  const handleChange = (e) => {
-    const newContent = e.target.value;
-    setFileContent(newContent);
-    // Save the current state to undo stack before updating
-    setUndoStack((prevStack) => [...prevStack, fileContent]);
-    // Emit the new content to the server
-    socket.emit("sendContent", { newContent, roomId });
-  };
-
   const openTask = () => {
     navigate(`Tasks`);
   };
+
   socket.on("fileReceived", (data) => {
     const blob = new Blob([data.fileData], {
       type: "application/octet-stream",
@@ -183,39 +209,41 @@ const Room = () => {
     a.remove();
   });
 
-  const handleDownload = () => {
+  const downloadAllFiles = () => {
 
-    // Convert the allFiles object to JSON string
-    const fileData = JSON.stringify(allFiles, null, 2); // Pretty format JSON
-
-    // Create a Blob from the JSON string
-    const blob = new Blob([fileData], { type: 'application/json' });
-
-    // Generate a URL for the Blob
-    const url = URL.createObjectURL(blob);
-
-    // Create an anchor element and set its href and download attributes
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'allFiles.json'; // File name for the download
-    document.body.appendChild(a); // Append to the DOM
-    a.click(); // Programmatically click the anchor
-    document.body.removeChild(a); // Clean up
-
-    // Release the Blob URL after the download
-    URL.revokeObjectURL(url);
+    allFiles.forEach((file) => {
+      // Create a blob from the file content
+      const blob = new Blob([file.content], { type: "text/plain" });
+  
+      // Generate a download URL
+      const url = URL.createObjectURL(blob);
+      // Create a temporary <a> element
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.filename; // Set the filename for download
+      document.body.appendChild(a);
+  
+      // Trigger the download
+      a.click();
+  
+      // Clean up
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
   };
+  
 
   const [chatboxdisplay, setchatboxdisplay] = useState(false);
-  const cursorStyle = {
-    position: "absolute",
-    width: "10px",
-    height: "10px",
-    backgroundColor: "red",
-    borderRadius: "50%",
-  };
-  const [gitrepo, setgitrepo] = useState();
-  
+
+  // const cursorStyle = {
+  //   position: "absolute",
+  //   width: "10px",
+  //   height: "10px",
+  //   backgroundColor: "red",
+  //   borderRadius: "50%",
+  // };
+
+  // const [gitrepo, setgitrepo] = useState();
 
   async function GenerateAnswer() {
     // console.log(API_URL);
@@ -223,7 +251,7 @@ const Room = () => {
       setAnswer("Loading ...");
       //   console.log("file me kuch Hai "  + fileContent)
       // console.log(question);
-      const res = await axios.post(`http://localhost:4000/api/generate`, {
+      const res = await axios.post(`http://localhost:5000/api/generate`, {
         contents: [
           {
             parts: [{ text: fileContent + " " + prompt }],
@@ -246,7 +274,7 @@ const Room = () => {
 
   const closeFile = (toclosefile) => {
     setOpenedFile((files) => files.filter((file) => file !== toclosefile));
-    if (openedFile.size == 0) {
+    if (openedFile.size === 0) {
       setFileContent("");
     }
   };
@@ -261,6 +289,7 @@ const Room = () => {
         <div className="hidden  sm:block col-span-2 flex flex-col gap-8 py-[10%] bg-slate-600">
           <div className="flex items-center justify-evenly">
             <div className="container mx-auto p-4 flex flex-col align-center justify-center">
+              <div className="text-[40px] mt-[-10px]">FusionSpace</div>
               <h1 className="md:text-2xl font-bold mb-4 text-white sm:text-xl">
                 Open and View File
               </h1>
@@ -286,8 +315,8 @@ const Room = () => {
               <div
                 key={index}
                 className={`${
-                  filename === currentFile ? "bg-green-400" : "bg-yellow-400"
-                } rounded-[20px] h-[30px] text-green-900 mx-[10%] px-[5%]`}
+                 filename === currentFile ? "bg-green-600 text-white" : "bg-white text-black"
+                } rounded-[20px] w-[200px] overflow-x-hidden h-[30px] text-green-900 mx-[10%] px-[5%]`}
               >
                 {filename}
               </div>
@@ -296,59 +325,41 @@ const Room = () => {
         </div>
         <div className="col-span-12 sm:col-span-8 flex flex-col bg-white">
           <div className="bg-gradient-to-br from-[#1e1e1e] via-[#252526] to-[#1e1e1e] flex justify-evenly items-center gap-5 sm:gap-20 overflow-x-auto">
-            {openedFile.map((filename, index) => (
+            {openedFile.map((name, index) => (
               <li key={index} className="list-none">
                 <button
-                  onClick={async() => {
-                    setCurrentFile(filename);
-                    // console.log("Kaise ho bhai saab" +allFiles);
+                  onClick={async () => {
+                    // Set the currently selected file name
+                    setCurrentFile(name);
 
-                    const fileindex = await allFiles.findIndex(
-                      (file) => file.name === filename
+                    // Find the file in the allFiles array by its filename
+                    const file = allFiles.find(
+                      (file) => file.filename === name
                     );
 
+                    if (file) {
+                      console.log("Setting file content:", file.content);
 
-                    if (fileindex !== -1) {
-
-                      console.log(
-                        "Setting file content:",
-                        allFiles[fileindex].content
-                      );
-
-                      setFileContent(allFiles[fileindex].content);
-                      setCurrentFile(allFiles[fileindex].name);
-                      // console.log(allFiles[fileindex].content);
+                      // Update the current file content
+                      setFileContent(file.content);
                     } else {
+                      console.warn("File not found in allFiles:", name);
 
-                      console.warn("File not found in allFiles:", filename);
+                      // Optional: Notify the user about the missing file
+                      // Example: showToast(`File "${name}" not found.`);
                     }
                   }}
                   className={`${
-                    filename === currentFile ? "bg-green-400" : "bg-yellow-400"
-                  } rounded-[20px] flex items-center gap-4 text-slate-900 m-[5%] p-[5%] sm:m-[10%] sm:p-[10%]`}
+                    name === currentFile ? "bg-green-600 text-white" : "bg-white text-black"
+                  } rounded-[10px] flex items-center gap-4 w-[150px] overflow-x-hidden text-slate-900 m-[5%]  my-[2%] p-[5%] sm:m-[10%] sm:my-[5%] sm:p-[10%]`}
                 >
-                  {filename} <ImCross onClick={() => closeFile(filename)} />
+                  {name} <ImCross onClick={() => closeFile(name)} />
                 </button>
               </li>
             ))}
           </div>
           <div>
-            {/* Your own cursor */}
-            <div ref={cursorRef} style={cursorStyle}></div>
-
-            {/* Render other users' cursors */}
-            {Object.keys(cursors).map((userId) => (
-              <div
-                key={userId}
-                style={{
-                  ...cursorStyle,
-                  left: `${cursors[userId].x}px`,
-                  top: `${cursors[userId].y}px`,
-                }}
-              >
-                👤
-              </div>
-            ))}
+          
           </div>
           <textarea
             value={fileContent}
@@ -365,7 +376,7 @@ const Room = () => {
             />
             <button
               onClick={GenerateAnswer}
-              className="fixed bottom-7 text-white bg-green-500 rounded-[20px]  left-1/2 transform -translate-x-1/2 w-[30%] md:w-[15%] h-[40px]"
+              className="fixed bottom-7 text-white bg-green-600 rounded-[20px]  left-1/2 transform -translate-x-1/2 w-[30%] md:w-[15%] h-[40px]"
             >
               {" "}
               Search
@@ -377,7 +388,7 @@ const Room = () => {
           <div className="flex items-center justify-center">
             <button
               onClick={openTask}
-              className="bg-green-500 flex items-center justify-center  gap-4 w-[80%] text-white h-[40px] "
+              className="bg-green-600 flex items-center justify-center  gap-4 w-[80%] text-white h-[40px] "
             >
               <div>Tasks</div> <FaTasks />
             </button>
@@ -434,8 +445,9 @@ const Room = () => {
             className="text-black px-2"
           />
         </div> */}
+
           <div className="flex flex-col align-center justify-center ">
-            <div className="text-center text-xl">Select Files</div>
+            <div className="text-center text-xl bg-green-600">Select Files</div>
             {openedFile.map((file, index) => {
               return (
                 <>
@@ -451,12 +463,10 @@ const Room = () => {
             })}
 
             <div className="flex align-center justify-center mt-2">
-              <button
-                onClick={handleDownload}
-                className="bg-green-500 rounded-[20px] w-[80%]"
-              >
-                Download All Files
-              </button>
+            <button onClick={downloadAllFiles} className="bg-blue-500 text-white p-2 rounded">
+  Download All Files
+</button>
+
             </div>
           </div>
           <button
