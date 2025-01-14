@@ -7,6 +7,7 @@ require("dotenv").config();
 const axios = require("axios");
 const app = express();
 const server = http.createServer(app);
+
 const io = socketIo(server, {
   cors: {
     origin: "*", // Allow all origins for development purposes
@@ -67,7 +68,6 @@ io.on("connection", (socket) => {
       
       console.log("Content update event received:", roomId, filename, newContent);
       const room = await Room.findOne({ RoomId: roomId });
-
       if (room) {
         const fileIndex = room.Files.findIndex((file) => file.filename === filename);
 
