@@ -4,6 +4,7 @@ require('dotenv').config()
 
 
 exports.dbConnect=()=>{
+    //  this is for database connection 
         mongoose.connect(process.env.DATABASE_URL,{
         })
         .then(()=>{
