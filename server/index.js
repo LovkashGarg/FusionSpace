@@ -27,8 +27,8 @@ io.on("connection", (socket) => {
 
   // Handle room joining
   socket.on("joinRoom", async ({ roomId }) => {
-    socket.join(roomId);
 
+    socket.join(roomId);
     // Initialize room if not already created
     if (!rooms[roomId]) {
       rooms[roomId] = [];
@@ -36,12 +36,16 @@ io.on("connection", (socket) => {
         RoomId: roomId,
         Files: [],
       });
-      await createRoom.save();
+
+      // means there should exist some roomId to save in the database 
+      if(roomId !== undefined){
+        await createRoom.save();
+      }
+      
     }
     rooms[roomId].push(socket.id);
-
     // Notify others in the room
-    socket.to(roomId).emit("userJoined", socket.id);
+    io.to(roomId).emit("userJoined", socket.id);
 
     // Update collaborators list
     io.to(roomId).emit("updateCollaborators", rooms[roomId]);
@@ -69,7 +73,9 @@ io.on("connection", (socket) => {
 
         if (fileIndex !== -1) {
           room.Files[fileIndex].content = newContent;
-          await room.save();
+          if(room.Files.length>=1){
+            await room.save();
+          }
 
           console.log("Content updated successfully");
           io.to(roomId).emit("updateContent", { filename, content: newContent });
@@ -86,13 +92,13 @@ io.on("connection", (socket) => {
     console.log("File change event received:", RoomID, filename, content);
     try {
       let room = await Room.findOne({ RoomId: RoomID });
-  
       if (!room) {
         // If the room doesn't exist, create it
         room = new Room({
           RoomId: RoomID,
           Files: [{ filename: filename, content }],
         });
+
       } else {
         // If room exists, check if the file exists
         const fileIndex = room.Files.findIndex((file) => file.filename === filename);
@@ -105,11 +111,13 @@ io.on("connection", (socket) => {
           room.Files[fileIndex].content = content;
           room.Files[fileIndex].createdAt = new Date(); // Update the timestamp
         }
+       
       }
-  
+   
+      if(room.Files.length>=1){
       // Save the changes
       await room.save();
-  
+      }
       // Broadcast the updated files list to all clients (including the sender)
       io.to(RoomID).emit("filechange", { filename, content });
 
@@ -122,7 +130,13 @@ io.on("connection", (socket) => {
 
   // Handle disconnect
   socket.on("disconnect", () => {
-    console.log("Client disconnected:", socket.id);
+    console.log(`User disconnected: ${socket.id}`);
+        for (const roomId in rooms) {
+            rooms[roomId] = rooms[roomId].filter((id) => id !== socket.id);
+            if (rooms[roomId].length === 0) {
+                delete rooms[roomId]; // Optional: Clean up empty rooms
+            }
+        }
     // Optionally, remove the socket ID from `rooms` here
   });
 });

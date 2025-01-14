@@ -4,7 +4,7 @@ import { IoArrowUndo } from "react-icons/io5";
 import { IoIosRedo, IoMdCopy } from "react-icons/io";
 import { ImCross } from "react-icons/im";
 import { IoIosChatboxes } from "react-icons/io";
-
+import { FaMale } from "react-icons/fa";
 // import Chatbox from "./chatbox";
 
 import axios from "axios";
@@ -26,6 +26,7 @@ const Room = () => {
   const [fileContent, setFileContent] = useState("");
   const [currentFile, setCurrentFile] = useState("");
   const [openedFile, setOpenedFile] = useState([]);
+  const [Showactives, setShowactives] = useState(false);
 
   const [allFiles, setAllFiles] = useState([]);
   const [collaborators, setCollaborators] = useState([]);
@@ -44,13 +45,15 @@ const Room = () => {
     // Emit event when the user joins the room
     socket.emit("joinRoom", { userId: socket.id });
 
-    if (socket.id && !collaborators.includes(socket.id)) {
+    if (socket.id !== null) {
       // setCurrentUser(socket.id);
       socket.emit("userJoined", socket.id);
     }
+
     // Update collaborators on user join
     socket.on("userJoined", (userId) => {
       setCollaborators((prev) => [...new Set([...prev, userId])]);
+      alert(userId + " joined the room");
     });
 
     // Remove user from collaborators on disconnect
@@ -192,6 +195,7 @@ const Room = () => {
     }
   };
 
+
   const openTask = () => {
     navigate(`Tasks`);
   };
@@ -232,7 +236,9 @@ const Room = () => {
     });
   };
   
-
+ const changeShowActives = () => {
+  setShowactives(!Showactives);
+ }
   const [chatboxdisplay, setchatboxdisplay] = useState(false);
 
   // const cursorStyle = {
@@ -326,7 +332,7 @@ const Room = () => {
         <div className="col-span-12 sm:col-span-8 flex flex-col bg-white">
           <div className="bg-gradient-to-br from-[#1e1e1e] via-[#252526] to-[#1e1e1e] flex justify-evenly items-center gap-5 sm:gap-20 overflow-x-auto">
             {openedFile.map((name, index) => (
-              <li key={index} className="list-none">
+              <li key={index} className="list-none flex justify-center">
                 <button
                   onClick={async () => {
                     // Set the currently selected file name
@@ -351,9 +357,17 @@ const Room = () => {
                   }}
                   className={`${
                     name === currentFile ? "bg-green-600 text-white" : "bg-white text-black"
-                  } rounded-[10px] flex items-center gap-4 w-[150px] overflow-x-hidden text-slate-900 m-[5%]  my-[2%] p-[5%] sm:m-[10%] sm:my-[5%] sm:p-[10%]`}
+                  } rounded-[10px] flex items-center gap-4  text-slate-900 m-[5%]  my-[2%] p-[5%] sm:m-[10%] sm:my-[5%] sm:p-[10%]`}
                 >
-                  {name} <ImCross onClick={() => closeFile(name)} />
+                  {name} 
+                <ImCross onClick={() => closeFile(name)} />
+                <button onClick={changeShowActives}><FaMale className="bg-red-600 h-[25px] w-[30px] p-[8%]" /></button>
+                <div className={`${Showactives?"block":"hidden"}`}>
+                <li>Lovkash</li>
+                <li>Rahul</li>
+                <li>Aman</li>
+                </div>
+                
                 </button>
               </li>
             ))}
