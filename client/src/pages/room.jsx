@@ -107,7 +107,7 @@ const Room = () => {
   const fetchFiles = async (roomID) => {
     try {
       const response = await axios.get(
-        `http://localhost:5000/allFilesdata/${roomID}`
+        `https://fusionspace.onrender.com/allFilesdata/${roomID}`
       );
       if (response.data.success) {
         setAllFiles(response.data.files);
@@ -257,7 +257,7 @@ const Room = () => {
       setAnswer("Loading ...");
       //   console.log("file me kuch Hai "  + fileContent)
       // console.log(question);
-      const res = await axios.post(`http://localhost:5000/api/generate`, {
+      const res = await axios.post(`https://fusionspace.onrender.com/api/generate`, {
         contents: [
           {
             parts: [{ text: fileContent + " " + prompt }],
