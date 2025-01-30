@@ -16,6 +16,8 @@ Room at FusionSpace
 
 Collabrate with Team 
 1. Now you will be able to see the files uploaded by the team at the Room .
+![Image](https://github.com/user-attachments/assets/1534a95c-23be-464c-a804-85fb19b1b780)
 2. Each file has a Undo / Redo feature .
 3. Once user refreshes / changes current file he will be able to see the updated file .
+
 
