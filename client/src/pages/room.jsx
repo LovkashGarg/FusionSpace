@@ -3,19 +3,13 @@ import { SocketContext } from "../context/socket";
 import { IoArrowUndo } from "react-icons/io5";
 import { IoIosRedo, IoMdCopy } from "react-icons/io";
 import { ImCross } from "react-icons/im";
-import { IoIosChatboxes } from "react-icons/io";
+import { IoIosChatboxes, IoIosClose } from "react-icons/io";
 import { FaMale } from "react-icons/fa";
-// import Chatbox from "./chatbox";
-
+import { FaTasks, FaBars, FaUsers, FaFile } from "react-icons/fa";
 import axios from "axios";
-import { FaTasks } from "react-icons/fa";
-import {
-  // useLocation,
-  useNavigate,
-  useParams,
-  // useSearchParams,
-} from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import FullScreenResponse from "./Response";
+
 const Room = () => {
   const socket = useContext(SocketContext);
   const navigate = useNavigate();
@@ -27,96 +21,36 @@ const Room = () => {
   const [currentFile, setCurrentFile] = useState("");
   const [openedFile, setOpenedFile] = useState([]);
   const [Showactives, setShowactives] = useState(false);
-
   const [allFiles, setAllFiles] = useState([]);
   const [collaborators, setCollaborators] = useState([]);
-
-  // const [cursors, setCursors] = useState({});
-  // const cursorRef = useRef(null);
-
   const [copied, setCopied] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [answer, setAnswer] = useState("");
-
   const [isOpen, setIsOpen] = useState(false);
+  const [chatboxdisplay, setchatboxdisplay] = useState(false);
   const [currentUrl] = useState(window.location.href);
 
+  // Mobile drawer state
+  const [leftDrawerOpen, setLeftDrawerOpen] = useState(false);
+  const [rightDrawerOpen, setRightDrawerOpen] = useState(false);
+
   useEffect(() => {
-    // Emit event when the user joins the room
-    socket.emit("joinRoom", { userId: socket.id });
-
-    if (socket.id !== null) {
-      // setCurrentUser(socket.id);
-      socket.emit("userJoined", socket.id);
-    }
-
-    // Update collaborators on user join
-    socket.on("userJoined", (userId) => {
-      setCollaborators((prev) => [...new Set([...prev, userId])]);
-      alert(userId + " joined the room");
+    socket.on("AllFiles", (files) => {
+      setAllFiles(files);
+      setOpenedFile(files.map((f) => f.filename));
     });
-
-    // Remove user from collaborators on disconnect
-    socket.on("userLeft", (userId) => {
-      setCollaborators((prev) => prev.filter((id) => id !== userId));
-    });
-
-    // Listen for content updates from other users
-    socket.on("updateContent", (newContent) => {
-      setFileContent(newContent);
-    });
-
-    // Listen for all files update from server
-
-    // Clean up event listeners on component unmount
-    return () => {
-      socket.emit("userLeft", socket.id);
-      socket.off("userJoined");
-      socket.off("userLeft");
-      socket.off("updateContent"); // Clean up listener on unmount
-    };
+    return () => socket.off("AllFiles");
   }, [socket]);
 
-  useEffect(() => {
-    // Listen for the 'filechange' event emitted by the server
-    socket.on("filechange", ({ filename, content }) => {
-      // Check if the changed file is the current file being viewed
-      if (filename === currentFile) {
-        // Update the file content for the current file
-        setFileContent(content);
-      }
-
-      // Optionally, you can update the opened files list or perform other UI updates
-      setOpenedFile((prevFiles) => {
-        const fileIndex = prevFiles.findIndex((file) => file === filename);
-        if (fileIndex === -1) {
-          return [...prevFiles, filename];
-        }
-        return prevFiles;
-      });
-    });
-
-    // Cleanup on component unmount
-    return () => {
-      socket.off("filechange");
-    };
-  }, [currentFile]);
-
-  //   const location=useLocation();
-  const [roomID, setRoomId] = useState("");
-  const fetchFiles = async (roomID) => {
+  const fetchFiles = async (id) => {
     try {
       const response = await axios.get(
-        `https://fusionspace.onrender.com/allFilesdata/${roomID}`
+        `${process.env.REACT_APP_BACKEND_URL}/allFilesdata/${id}`
       );
       if (response.data.success) {
         setAllFiles(response.data.files);
         setOpenedFile(response.data.files.map((file) => file.filename));
-
-        console.log("Files:", response.data.files);
         return response.data.files;
-      } else {
-        console.error("No files found:", response.data.message);
       }
     } catch (error) {
       console.error("Error fetching files:", error.message);
@@ -124,23 +58,87 @@ const Room = () => {
   };
 
   useEffect(() => {
-    setRoomId(roomId);
-    fetchFiles(roomID);
-  }, [roomID]);
+    if (roomId) fetchFiles(roomId);
+  }, [roomId]);
 
   useEffect(() => {
-    fetchFiles(roomID);
-  }, [allFiles]);
+    const username = localStorage.getItem("fusionspace_username") || socket.id;
+    socket.emit("joinRoom", { roomId, username });
+   socket.on("userJoined", ({ userId, username }) => {
+  setCollaborators((prev) => {
+    const already = prev.find((c) => c.id === userId);
+    if (already) return prev;
+    return [...prev, { id: userId, username }];
+  });
+  alert(`${username} joined the room`);
+});
+
+    socket.on("userLeft", (userId) => {
+      setCollaborators((prev) => prev.filter((id) => id !== userId));
+    });
+
+    socket.on("updateContent", ({ filename, content }) => {
+      setAllFiles((prev) => {
+        const idx = prev.findIndex((f) => f.filename === filename);
+        if (idx === -1) return prev;
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], content };
+        return updated;
+      });
+      setCurrentFile((cur) => {
+        if (filename === cur) setFileContent(content);
+        return cur;
+      });
+    });
+
+    return () => {
+      socket.emit("userLeft", socket.id);
+      socket.off("userJoined");
+      socket.off("userLeft");
+      socket.off("updateContent");
+    };
+  }, [socket, roomId]);
+
+  useEffect(() => {
+    socket.on("filechange", ({ filename, content }) => {
+      if (filename === currentFile) setFileContent(content);
+      setAllFiles((prev) => {
+        const exists = prev.findIndex((f) => f.filename === filename);
+        if (exists === -1) return [...prev, { filename, content }];
+        const updated = [...prev];
+        updated[exists] = { ...updated[exists], content };
+        return updated;
+      });
+      setOpenedFile((prev) =>
+        prev.includes(filename) ? prev : [...prev, filename]
+      );
+    });
+    return () => socket.off("filechange");
+  }, [currentFile, socket]);
+
+  useEffect(() => {
+    socket.on("fileReceived", (data) => {
+      const blob = new Blob([data.fileData], { type: "application/octet-stream" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = data.fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    });
+    return () => socket.off("fileReceived");
+  }, [socket]);
 
   const openChatbox = () => {
     setchatboxdisplay(!chatboxdisplay);
     navigate(`chat`);
-    console.log(chatboxdisplay + "the chat box");
   };
+
   const handleCopy = () => {
     navigator.clipboard.writeText(currentUrl);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000); // Reset after 2 seconds
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleFileChange = (event) => {
@@ -149,18 +147,14 @@ const Room = () => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const content = e.target.result;
-
-        // Update the opened files list, current file, and its content
-        setOpenedFile((prev) => [...prev, file.name]);
+        const updatedAt = Date.now();
+        setOpenedFile((prev) =>
+          prev.includes(file.name) ? prev : [...prev, file.name]
+        );
         setCurrentFile(file.name);
         setFileContent(content);
-
-        // Emit the file content with filename and room ID to the server
-        socket.emit("filechange", {
-          RoomID: roomID, // Room ID
-          filename: file.name, // File name
-          content, // File content
-        });
+        socket.emit("filechange", { RoomID: roomId, filename: file.name, content, updatedAt });
+        setLeftDrawerOpen(false);
       };
       reader.readAsText(file);
     }
@@ -168,327 +162,346 @@ const Room = () => {
 
   const handleChange = (e) => {
     const newContent = e.target.value;
-    // Update the content in the current page
-    setUndoStack((prevStack) => [...prevStack, fileContent]); // Save current content to the undo stack
-    setFileContent(newContent); // Update the displayed content
-
-    // Emit the new content with file name and room ID to the server
-    socket.emit("sendContent", {
-      roomId, // Room ID
-      filename: currentFile, // File name of the active file
-      newContent: newContent, // Updated file content
-    });
+    const updatedAt = Date.now();
+    setUndoStack((prev) => [...prev, fileContent]);
+    setRedoStack([]);
+    setFileContent(newContent);
+    socket.emit("sendContent", { roomId, filename: currentFile, newContent, updatedAt });
   };
 
   const handleUndo = () => {
     if (undoStack.length > 0) {
       const lastContent = undoStack[undoStack.length - 1];
-
-      // Update fileContent to the last saved state
+      const updatedAt = Date.now();
+      setRedoStack((prev) => [...prev, fileContent]);
       setFileContent(lastContent);
-
-      // Remove the last state from undoStack
       setUndoStack(undoStack.slice(0, -1));
-
-      // Emit the restored content to the server
-      socket.emit("sendContent", { lastContent, roomId });
+      socket.emit("sendContent", { roomId, filename: currentFile, newContent: lastContent, updatedAt });
     }
   };
 
-
-  const openTask = () => {
-    navigate(`Tasks`);
+  const handleRedo = () => {
+    if (redoStack.length > 0) {
+      const nextContent = redoStack[redoStack.length - 1];
+      const updatedAt = Date.now();
+      setUndoStack((prev) => [...prev, fileContent]);
+      setFileContent(nextContent);
+      setRedoStack(redoStack.slice(0, -1));
+      socket.emit("sendContent", { roomId, filename: currentFile, newContent: nextContent, updatedAt });
+    }
   };
 
-  socket.on("fileReceived", (data) => {
-    const blob = new Blob([data.fileData], {
-      type: "application/octet-stream",
-    });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = data.fileName;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  });
+  const openTask = () => navigate(`Tasks`);
 
   const downloadAllFiles = () => {
-
     allFiles.forEach((file) => {
-      // Create a blob from the file content
       const blob = new Blob([file.content], { type: "text/plain" });
-  
-      // Generate a download URL
       const url = URL.createObjectURL(blob);
-      // Create a temporary <a> element
       const a = document.createElement("a");
       a.href = url;
-      a.download = file.filename; // Set the filename for download
+      a.download = file.filename;
       document.body.appendChild(a);
-  
-      // Trigger the download
       a.click();
-  
-      // Clean up
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     });
   };
-  
- const changeShowActives = () => {
-  setShowactives(!Showactives);
- }
-  const [chatboxdisplay, setchatboxdisplay] = useState(false);
 
-  // const cursorStyle = {
-  //   position: "absolute",
-  //   width: "10px",
-  //   height: "10px",
-  //   backgroundColor: "red",
-  //   borderRadius: "50%",
-  // };
-
-  // const [gitrepo, setgitrepo] = useState();
+  const changeShowActives = () => setShowactives(!Showactives);
 
   async function GenerateAnswer() {
-    // console.log(API_URL);
     try {
       setAnswer("Loading ...");
-      //   console.log("file me kuch Hai "  + fileContent)
-      // console.log(question);
-      const res = await axios.post(`https://fusionspace.onrender.com/api/generate`, {
-        contents: [
-          {
-            parts: [{ text: fileContent + " " + prompt }],
-          },
-        ],
-      });
-      //   console.log(res.data);
-      // console.log("API Response:", res.data); // Log response to verify structure
+      const res = await axios.post(
+        `${process.env.REACT_APP_BACKEND_URL}/api/generate`,
+        { contents: [{ parts: [{ text: fileContent + " " + prompt }] }] }
+      );
       setAnswer(res.data);
       setIsOpen(true);
       setPrompt("");
     } catch (error) {
       setAnswer("An error occurred. Please try again.");
-      console.error(
-        "Error fetching the answer:",
-        error.response ? error.response.data : error.message
-      );
     }
   }
 
   const closeFile = (toclosefile) => {
     setOpenedFile((files) => files.filter((file) => file !== toclosefile));
-    if (openedFile.size === 0) {
+    if (currentFile === toclosefile) {
       setFileContent("");
+      setCurrentFile("");
     }
   };
 
+  const FilesSidebarContent = () => (
+    <div className="flex flex-col h-full gap-4 p-4">
+      <div className="flex items-center justify-between">
+        <span className="text-xl font-bold text-white tracking-tight">FusionSpace</span>
+        <button className="sm:hidden text-slate-300 hover:text-white" onClick={() => setLeftDrawerOpen(false)}>
+          <IoIosClose size={26} />
+        </button>
+      </div>
+
+      <label className="flex flex-col gap-1 cursor-pointer">
+        <span className="text-xs text-slate-400 uppercase tracking-widest mb-1">Open File</span>
+        <input
+          type="file"
+          accept=".html,.js,.cpp,.jsx,.txt,.doc,.md,.gitignore"
+          onChange={handleFileChange}
+          className="text-sm text-slate-300
+            file:mr-2 file:py-1.5 file:px-3
+            file:rounded-lg file:border-0
+            file:text-xs file:font-medium
+            file:bg-green-600 file:text-white
+            hover:file:bg-green-700 file:cursor-pointer
+            file:transition-colors"
+        />
+      </label>
+  
+  <div className="flex flex-col gap-1.5 flex-1 overflow-y-auto">
+  <span className="text-xs text-slate-400 uppercase tracking-widest mb-1">Files</span>
+  {allFiles.length === 0 && (
+    <p className="text-slate-500 text-sm italic">No files open</p>
+  )}
+  {allFiles.map((file, index) => (   // <-- allFiles not openedFile
+    <button
+      key={index}
+      onClick={() => {
+        setCurrentFile(file.filename);
+        setFileContent(file.content);
+        setOpenedFile((prev) =>       // <-- also open it as a tab if not already
+          prev.includes(file.filename) ? prev : [...prev, file.filename]
+        );
+        setLeftDrawerOpen(false);
+      }}
+      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-all w-full ${
+        file.filename === currentFile
+          ? "bg-green-600 text-white"
+          : "bg-slate-700/60 text-slate-300 hover:bg-slate-600"
+      }`}
+    >
+      <FaFile size={10} className="shrink-0 opacity-60" />
+      <span className="truncate">{file.filename}</span>  {/* <-- file.filename not filename */}
+    </button>
+  ))}
+</div>
+</div>
+  );
+  const RightSidebarContent = () => (
+    <div className="flex flex-col h-full gap-5 p-4 overflow-y-auto">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-slate-400 uppercase tracking-widest">Room Tools</span>
+        <button className="sm:hidden text-slate-300 hover:text-white" onClick={() => setRightDrawerOpen(false)}>
+          <IoIosClose size={26} />
+        </button>
+      </div>
+
+      <button
+        onClick={openTask}
+        className="bg-green-600 hover:bg-green-700 flex items-center justify-center gap-2 w-full text-white h-10 rounded-lg text-sm font-medium transition-colors"
+      >
+        <FaTasks size={14} /> Tasks
+      </button>
+
+      <div className="flex gap-2">
+        <button
+          onClick={handleUndo}
+          className="flex-1 flex items-center justify-center gap-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg h-9 text-sm transition-colors text-slate-200"
+        >
+          <IoArrowUndo size={14} /> Undo
+        </button>
+        <button
+          onClick={handleRedo}
+          className="flex-1 flex items-center justify-center gap-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg h-9 text-sm transition-colors text-slate-200"
+        >
+          <IoIosRedo size={14} /> Redo
+        </button>
+      </div>
+
+   <div>
+  <p className="text-xs text-slate-400 uppercase tracking-widest mb-2">Collaborators</p>
+  <div className="flex flex-col gap-1.5">
+    {collaborators.length === 0 ? (
+      <p className="text-slate-500 text-sm italic">Only you here</p>
+    ) : (
+      collaborators.map((collab) => (
+        <div key={collab.id} className="bg-slate-700/60 text-slate-200 px-3 py-2 rounded-lg text-xs truncate">
+          {collab.username}
+        </div>
+      ))
+    )}
+  </div>
+</div>
+
+      <div>
+        <p className="text-xs text-slate-400 uppercase tracking-widest mb-2">Share Link</p>
+        <div className="flex items-center gap-2 bg-slate-700/60 rounded-lg px-3 py-2 border border-slate-600">
+          <span className="text-slate-300 text-xs truncate flex-1">{currentUrl}</span>
+          <button onClick={handleCopy} className="text-green-400 hover:text-green-300 shrink-0 transition-colors">
+            <IoMdCopy size={16} />
+          </button>
+        </div>
+        {copied && <span className="text-xs text-green-400 mt-1 block">Copied!</span>}
+      </div>
+
+      <div>
+        <p className="text-xs text-slate-400 uppercase tracking-widest mb-2">Download</p>
+        <div className="flex flex-col gap-1.5 mb-3">
+          {openedFile.map((file, index) => (
+            <div key={index} className="flex items-center gap-2">
+              <input type="checkbox" className="accent-green-500" />
+              <span className="text-sm text-slate-300 truncate">{file}</span>
+            </div>
+          ))}
+        </div>
+        <button
+          onClick={downloadAllFiles}
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 rounded-lg transition-colors font-medium"
+        >
+          Download All Files
+        </button>
+      </div>
+
+      <button
+        onClick={openChatbox}
+        className="flex items-center justify-center gap-2 border border-slate-500 hover:border-white rounded-xl h-11 text-slate-300 hover:text-white transition-colors mt-auto text-sm"
+      >
+        <IoIosChatboxes size={18} /> Open Chat
+      </button>
+    </div>
+  );
+
   return (
     <>
-      {" "}
       {isOpen && (
         <FullScreenResponse text={answer} onClose={() => setIsOpen(false)} />
       )}
-      <div className="grid grid-cols-12 w-[100%] h-[90vh] ">
-        <div className="hidden  sm:block col-span-2 flex flex-col gap-8 py-[10%] bg-slate-600">
-          <div className="flex items-center justify-evenly">
-            <div className="container mx-auto p-4 flex flex-col align-center justify-center">
-              <div className="text-[40px] mt-[-10px]">FusionSpace</div>
-              <h1 className="md:text-2xl font-bold mb-4 text-white sm:text-xl">
-                Open and View File
-              </h1>
-              <input
-                type="file"
-                accept=".html,.js,.cpp,.jsx,.txt,.doc,.md,.gitignore"
-                onChange={handleFileChange}
-                className="mb-4 border border-gray-300 p-2 rounded "
-              />
-            </div>
-            <div className="bg-red-600 w-[120px] text-white rounded-[20px]">
-              New File
-            </div>
-            <div className="bg-red-600 w-[120px] text-white rounded-[20px]">
-              Upload
-            </div>
+
+      {/* Backdrop for mobile drawers */}
+      {(leftDrawerOpen || rightDrawerOpen) && (
+        <div
+          className="fixed inset-0 bg-black/60 z-30 sm:hidden backdrop-blur-sm"
+          onClick={() => { setLeftDrawerOpen(false); setRightDrawerOpen(false); }}
+        />
+      )}
+
+      {/* Mobile left drawer (files) */}
+      <div className={`fixed top-0 left-0 h-full w-72 bg-slate-800 z-40 transform transition-transform duration-300 ease-in-out sm:hidden shadow-2xl ${leftDrawerOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        <FilesSidebarContent />
+      </div>
+
+      {/* Mobile right drawer (tools) */}
+      <div className={`fixed top-0 right-0 h-full w-72 bg-slate-800 z-40 transform transition-transform duration-300 ease-in-out sm:hidden shadow-2xl ${rightDrawerOpen ? "translate-x-0" : "translate-x-full"}`}>
+        <RightSidebarContent />
+      </div>
+
+      {/* Main layout */}
+      <div className="flex h-screen overflow-hidden bg-[#1e1e1e] text-white">
+
+        {/* Desktop left sidebar */}
+        <div className="hidden sm:flex w-52 shrink-0 bg-slate-800 border-r border-slate-700 flex-col">
+          <FilesSidebarContent />
+        </div>
+
+        {/* Center: editor column */}
+        <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+
+          {/* Mobile top bar */}
+          <div className="flex sm:hidden items-center justify-between px-3 h-12 bg-slate-900 border-b border-slate-700 shrink-0">
+            <button onClick={() => setLeftDrawerOpen(true)} className="p-1.5 rounded-md text-slate-300 hover:text-white hover:bg-slate-700 transition-colors">
+              <FaBars size={18} />
+            </button>
+            <span className="text-sm font-medium text-slate-200 truncate max-w-[160px]">
+              {currentFile || "FusionSpace"}
+            </span>
+            <button onClick={() => setRightDrawerOpen(true)} className="p-1.5 rounded-md text-slate-300 hover:text-white hover:bg-slate-700 transition-colors">
+              <FaUsers size={18} />
+            </button>
           </div>
-          <div className="bg-white text-green-900 mx-[10%] mb-4 px-[7%] rounded-[20px] h-[40px] flex justify-left align-center items-center ">
-            All Files
-          </div>
-          <div className="flex flex-col gap-3 justify-center items-start">
-            {openedFile.map((filename, index) => (
+
+          {/* File tabs */}
+          <div className="flex items-center gap-1 px-2 py-1.5 bg-[#252526] border-b border-slate-700 overflow-x-auto shrink-0"
+            style={{ scrollbarWidth: "none" }}>
+            {openedFile.length === 0 && (
+              <span className="text-slate-500 text-xs px-2 italic">No files open</span>
+            )}
+            {openedFile.map((name, index) => (
               <div
                 key={index}
-                className={`${
-                 filename === currentFile ? "bg-green-600 text-white" : "bg-white text-black"
-                } rounded-[20px] w-[200px] overflow-x-hidden h-[30px] text-green-900 mx-[10%] px-[5%]`}
+                className={`relative flex items-center gap-2 px-3 py-1.5 rounded-md text-xs whitespace-nowrap cursor-pointer shrink-0 transition-all select-none group ${
+                  name === currentFile
+                    ? "bg-green-700 text-white"
+                    : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                }`}
+                onClick={() => {
+                  setCurrentFile(name);
+                  const file = allFiles.find((f) => f.filename === name);
+                  if (file) setFileContent(file.content);
+                }}
               >
-                {filename}
+                <span className="max-w-[100px] truncate">{name}</span>
+
+                <button
+                  onClick={(e) => { e.stopPropagation(); changeShowActives(); }}
+                  className="opacity-50 hover:opacity-100 transition-opacity"
+                  title="Active users"
+                >
+                  <FaMale size={10} />
+                </button>
+
+                <button
+                  onClick={(e) => { e.stopPropagation(); closeFile(name); }}
+                  className="opacity-40 hover:opacity-100 hover:text-red-400 transition-all"
+                >
+                  <ImCross size={8} />
+                </button>
+
+                {Showactives && name === currentFile && (
+                  <div className="absolute top-8 left-0 bg-slate-800 border border-slate-600 rounded-lg p-2 z-20 text-xs text-white shadow-xl min-w-[100px]">
+                    <div className="py-0.5">Lovkash</div>
+                    <div className="py-0.5">Rahul</div>
+                    <div className="py-0.5">Aman</div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
-        </div>
-        <div className="col-span-12 sm:col-span-8 flex flex-col bg-white">
-          <div className="bg-gradient-to-br from-[#1e1e1e] via-[#252526] to-[#1e1e1e] flex justify-evenly items-center gap-5 sm:gap-20 overflow-x-auto">
-            {openedFile.map((name, index) => (
-              <li key={index} className="list-none flex justify-center">
-                <button
-                  onClick={async () => {
-                    // Set the currently selected file name
-                    setCurrentFile(name);
 
-                    // Find the file in the allFiles array by its filename
-                    const file = allFiles.find(
-                      (file) => file.filename === name
-                    );
-
-                    if (file) {
-                      console.log("Setting file content:", file.content);
-
-                      // Update the current file content
-                      setFileContent(file.content);
-                    } else {
-                      console.warn("File not found in allFiles:", name);
-
-                      // Optional: Notify the user about the missing file
-                      // Example: showToast(`File "${name}" not found.`);
-                    }
-                  }}
-                  className={`${
-                    name === currentFile ? "bg-green-600 text-white" : "bg-white text-black"
-                  } rounded-[10px] flex items-center gap-4  text-slate-900 m-[5%]  my-[2%] p-[5%] sm:m-[10%] sm:my-[5%] sm:p-[10%]`}
-                >
-                  {name} 
-                <ImCross onClick={() => closeFile(name)} />
-                <button onClick={changeShowActives}><FaMale className="bg-red-600 h-[25px] w-[30px] p-[8%]" /></button>
-                <div className={`${Showactives?"block":"hidden"}`}>
-                <li>Lovkash</li>
-                <li>Rahul</li>
-                <li>Aman</li>
-                </div>
-                
-                </button>
-              </li>
-            ))}
-          </div>
-          <div>
-          
-          </div>
+          {/* Code editor */}
           <textarea
             value={fileContent}
             onChange={handleChange}
-            className="h-[100vh] whitespace-pre-wrap border p-4 bg-gradient-to-br from-[#1e1e1e] via-[#252526] to-[#1e1e1e] min-h-screen text-white rounded"
+            className="flex-1 w-full p-4 bg-[#1e1e1e] text-slate-100 font-mono text-sm resize-none outline-none leading-relaxed"
+            placeholder={currentFile ? "" : "← Open a file to start editing"}
+            spellCheck={false}
           />
-          <div>
+
+          {/* AI prompt bar — pinned to bottom of editor */}
+          <div className="shrink-0 flex items-end gap-2 px-3 py-2 bg-[#252526] border-t border-slate-700">
             <textarea
-              type="text"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              className="bg-slate-600 rounded-[20px] px-3 fixed bottom-5 left-1/2 transform -translate-x-1/2 w-[80%] sm:w-[30%] h-[80px] border-[2px]  border-white flex items-center align-center justify-center text-center  text-white "
-              placeholder="Interact with current File"
+              rows={2}
+              className="flex-1 bg-slate-700 rounded-lg px-3 py-2 text-white text-sm resize-none outline-none border border-slate-600 focus:border-green-500 transition-colors placeholder-slate-400 leading-relaxed"
+              placeholder="Ask AI about this file… (Enter to send)"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  GenerateAnswer();
+                }
+              }}
             />
             <button
               onClick={GenerateAnswer}
-              className="fixed bottom-7 text-white bg-green-600 rounded-[20px]  left-1/2 transform -translate-x-1/2 w-[30%] md:w-[15%] h-[40px]"
+              className="shrink-0 bg-green-600 hover:bg-green-700 active:scale-95 text-white rounded-lg px-4 h-[60px] text-sm font-medium transition-all"
             >
-              {" "}
-              Search
+              Ask
             </button>
           </div>
         </div>
 
-        <div className="col-span-2 hidden sm:block bg-slate-600 p-4  shadow-lg text-white space-y-4  md:text-lg">
-          <div className="flex items-center justify-center">
-            <button
-              onClick={openTask}
-              className="bg-green-600 flex items-center justify-center  gap-4 w-[80%] text-white h-[40px] "
-            >
-              <div>Tasks</div> <FaTasks />
-            </button>
-          </div>
-          <div className="font-semibold text-xl">Collaborators</div>
-          <div className="space-y-2">
-            {collaborators.map((collab) => (
-              <div
-                key={collab}
-                className="bg-white text-green-900 px-4 py-2 rounded-lg shadow-md"
-              >
-                {collab}
-              </div>
-            ))}
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <span>Sharable Link:</span>
-            <span className="bg-slate-700 px-2 py-1 rounded-md text-gray-300 truncate">
-              {currentUrl}
-            </span>
-            <button
-              onClick={handleCopy}
-              className="text-green-300 hover:text-green-500"
-            >
-              <IoMdCopy size={24} />
-            </button>
-            {copied && <span className="text-sm text-green-400">Copied!</span>}
-          </div>
-
-          <div className="flex justify-evenly mt-4">
-            <button
-              onClick={handleUndo}
-              className="flex items-center space-x-2 hover:text-green-400"
-            >
-              <IoArrowUndo size={24} />
-              <span>Undo</span>
-            </button>
-            <button
-              onClick={handleUndo}
-              className="flex items-center space-x-2 hover:text-green-400"
-            >
-              <IoIosRedo size={24} />
-              <span>Redo</span>
-            </button>
-          </div>
-
-          {/* <div>
-          <div>Download File</div>{" "}
-          <input
-            value={gitrepo}
-            type="Enter git Repo Initialized"
-            onChange={(e) => setgitrepo(e.target.value)}
-            className="text-black px-2"
-          />
-        </div> */}
-
-          <div className="flex flex-col align-center justify-center ">
-            <div className="text-center text-xl bg-green-600">Select Files</div>
-            {openedFile.map((file, index) => {
-              return (
-                <>
-                  <div
-                    key={index}
-                    className="flex items-center gap-3 justify-left"
-                  >
-                    <input type="checkbox" />
-                    <div>{file}</div>
-                  </div>
-                </>
-              );
-            })}
-
-            <div className="flex align-center justify-center mt-2">
-            <button onClick={downloadAllFiles} className="bg-blue-500 text-white p-2 rounded">
-  Download All Files
-</button>
-
-            </div>
-          </div>
-          <button
-            onClick={openChatbox}
-            className="fixed bottom-7 right-7 border border-[3px] border-white rounded-[20px] h-[50px] w-[100px] flex items-center justify-center"
-          >
-            <IoIosChatboxes size={30} />
-          </button>
+        {/* Desktop right sidebar */}
+        <div className="hidden sm:flex w-52 shrink-0 bg-slate-800 border-l border-slate-700 flex-col">
+          <RightSidebarContent />
         </div>
       </div>
     </>

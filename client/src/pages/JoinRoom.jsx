@@ -1,30 +1,21 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import TextEditor from '../components/TextEditor';
-
 
 const JoinRoom = () => {
-    const generateRoomId=()=>{
-        const array = new Uint32Array(1);
-        window.crypto.getRandomValues(array);
-        const uniqueRoomId = array[0].toString(16).slice(0, 8);
-        setRoomId(uniqueRoomId);
-    }
   const [roomId, setRoomId] = useState('');
-  const [UserName,setUserName]=useState('');
+  const [UserName, setUserName] = useState('');
+  const navigate = useNavigate();
 
-    const handleRoomIdChange = (event) => {
-    setRoomId(event.target.value);
+  const generateRoomId = () => {
+    const array = new Uint32Array(1);
+    window.crypto.getRandomValues(array);
+    setRoomId(array[0].toString(16).slice(0, 8));
   };
 
-  const navigate=useNavigate();
   const handleJoinRoom = () => {
-    // Handle joining the room, e.g., redirect to a chat room or trigger a socket event
-    console.log('Joining room:', roomId);
-    // ...
-    localStorage.setItem('UserName',UserName);
-    // Use correct query parameter syntax
-  navigate(`roomId/roomId=${roomId}`);
+    if (!UserName.trim() || !roomId.trim()) return;
+    localStorage.setItem('fusionspace_username', UserName.trim());
+    navigate(`/roomId/${roomId}`);
   };
 
   return (
@@ -35,14 +26,14 @@ const JoinRoom = () => {
         type="text"
         placeholder="Enter UserName"
         value={UserName}
-        onChange={(e)=>setUserName(e.target.value)}
+        onChange={(e) => setUserName(e.target.value)}
         className="w-full max-w-md p-4 border border-gray-300 rounded-md mb-4"
       />
       <input
         type="text"
         placeholder="Enter Room ID"
         value={roomId}
-        onChange={handleRoomIdChange}
+        onChange={(e) => setRoomId(e.target.value)}
         className="w-full max-w-md p-4 border border-gray-300 rounded-md mb-4"
       />
       <button
@@ -57,7 +48,6 @@ const JoinRoom = () => {
       >
         Create Room
       </button>
-      
     </div>
   );
 };
